@@ -10,8 +10,6 @@ import matplotlib.lines  as mlines
 '''
 ################################################################################
 '''
-
-
 class ElectricMotor:
     """ 
     Mother class for storing electric motor info and data
@@ -71,8 +69,6 @@ class ElectricMotor:
         
         self.specs['kin'][0] = T
         
-
-
 '''
 ################################################################################
 '''
@@ -91,15 +87,23 @@ class MotorAnalyzer:
         
         nm = ElectricMotor()
         
-        # Copy specs
+        # Copy specs dictionnary
         self.specs = nm.specs
         
         # Load values from files
-        self.load_motors_data(filename)
+        self.load_motors_data( filename )
         
-        # Params
-        self.save        = True
-        self.output_path = '../output/'
+        # I/O Params
+        self.save          = True
+        self.output_path   = '../output/'
+        self.analysis_name = 'Motor analysis of '
+        
+        # Analysis Params
+        self.active_type  = 'All'
+        self.active_range = [[-1,100000000],[-1,1000000000]]
+        
+        # Regression Params
+        self.reg_type = 'lin'
         
     
     ############################
@@ -128,92 +132,166 @@ class MotorAnalyzer:
     def load_motors_data(self, filename = 'data.csv'  ):
         """ create a list of motors from data"""
         
-        self.n  = 0
-        self.ml = []
+        self.n          = 0
+        self.motor_list = []
         
         with open( filename , newline='') as f:
             reader = csv.reader(f)
             for row in reader:
                 print( 'Loading: ' , row )
-                self.ml.append( self.process_motor_data( row ) )
+                self.motor_list.append( self.process_motor_data( row ) )
                 self.n = self.n + 1
         
         print('Loaded ',self.n,' motors')
-        return self.ml
-    
-    
-    
-    ############################
-    def two_axis_analysis(self, param1 = 'dia' , param2 = 'pow' , type2plot = 'All'  ):
-        """ create two array of data to compare """
-        
-        # Init list
-        x = []
-        y = []
-        
-        for motor in self.ml:
-            
-            if type2plot == 'All':
-                
-                x.append( motor.specs[param1][0] )
-                y.append( motor.specs[param2][0] )
-                
-            else:
-                #TODO
-                pass
-    
-    
-        return x,y
+        return self.motor_list
     
     
     ############################
-    def two_axis_plot( self,  param1 = 'dia' , param2 = 'pow' , type2plot = 'All'  ):
-        """ create two array of data to compare """
+    def two_axis_plot( self,  param1 = 'dia' , param2 = 'pow'):
+    
+        self.two_axis_analysis( param1, param2, plot = True, reg = False)
         
-        # Create figure
-        fig , plot = plt.subplots(1, sharex=True,figsize=(4, 3),dpi=300, frameon=True)
+    ############################
+    def two_axis_regression( self,  param1 = 'dia' , param2 = 'pow'):
+    
+        self.two_axis_analysis( param1, param2, plot = True, reg = True)
+    
+    
+    ############################
+    def two_axis_analysis( self,  param1 = 'dia' , param2 = 'pow' , plot = False , reg = False ):
+        """ analyze relationships between two params """
         
-        # Save plot access
-        self.fig  = fig
-        self.plot = plot
+        # Init lists
+        self.x = []
+        self.y = []
+        
+        if plot:
+            # Create figure
+            fig , plot = plt.subplots(1, sharex=True,figsize=(4, 3),dpi=300, frameon=True)
+            self.fig  = fig
+            self.plot = plot
         
         # For all motors
-        for motor in self.ml:
+        for motor in self.motor_list:
             
-            if type2plot == 'All':
+            if self.motor_meet_criteria( motor, param1, param2):
+                # Include this motor in the analysis
                 
                 x =  motor.specs[param1][0]
                 y =  motor.specs[param2][0]
                 
-                marker_type, color_type = self.motortype2marker( motor.specs['typ'][0] )
+                self.x.append(x)
+                self.y.append(y)
                 
-                plot.plot([x], [y], marker=marker_type, markersize=3, color=color_type)
+                if plot:
+                    marker_type, color_type = self.motortype2marker( motor.specs['typ'][0] )
+                    plot.plot([x], [y], marker=marker_type, markersize=3, color=color_type)
                 
             else:
-                #TODO
+                # Skip this motor
                 pass
             
-        # Figure params
-        plot.grid(True)
-        plot.set_xlabel( self.specs[param1][1] + '\n' + self.specs[param1][2], fontsize=7 )
-        plot.set_ylabel( self.specs[param2][1] + '\n' + self.specs[param2][2], fontsize=7 )
-#         plot.set_xlim(0,50)
-        plot.tick_params(axis='both', which='major', labelsize=7)
-        plot.tick_params(axis='both', which='minor', labelsize=6)
+        print('Number of motor in analysis domain: ', self.x.__len__( ) )
         
-        self.addmotortypelegend()
-        plt.draw()
-        fig.tight_layout()
+                
+        if reg:
+            # Conduct regression
+            
+            n = len(self.x)
+            
+            # Regressor
+            X = np.array(self.x)
+            Y = np.array(self.y)
+            
+            if self.reg_type == 'lin':
+                
+                X_0 = np.ones( n ) # constant offset
+                
+                Phi = np.array([ X, X_0])
+                
+                P = np.linalg.inv( np.dot( Phi , Phi.T ) ) 
+                M = np.dot( P , Phi )
+                
+                self.theta = np.dot( M , Y )
+                
+                print('Reg. results: slope=', self.theta[0], ' offset=', self.theta[1])
+                
+                
+        if plot:
+            
+            if reg:
+                # Plot regression
+                n = 10
+                x = np.linspace( X.min() , X.max(), num=n)
+                y = self.reg_map(x)
+                
+                plot.plot( x, y, linestyle = '-.', color = 'gray' )
+                
+            # Figure params
+            plot.grid(True)
+            plot.set_xlabel( self.specs[param1][1] + '\n' + self.specs[param1][2], fontsize=7 )
+            plot.set_ylabel( self.specs[param2][1] + '\n' + self.specs[param2][2], fontsize=7 )
+            plot.tick_params(axis='both', which='major', labelsize=7)
+            plot.tick_params(axis='both', which='minor', labelsize=6)
+            
+            self.addmotortypelegend()
+            plt.draw()
+            fig.tight_layout()
+            
+            fig_name = self.analysis_name + self.specs[param1][1] + ' vs. ' + self.specs[param2][1]
+            fig.canvas.set_window_title( fig_name )        
+            
+            if self.save:
+                file_name = self.output_path + fig_name.replace(" ", "_")
+                fig.savefig( file_name + '.png' , format='png', bbox_inches='tight', pad_inches=0.05) 
+                fig.savefig( file_name + '.pdf' , format='pdf', bbox_inches='tight', pad_inches=0.05) 
+                print('Figure {' + fig_name + '} saved')
+                
+                
+    ############################
+    def reg_map(self, x):  
+        """ Foward computation using regression """
         
-        fig_name = 'Motor analysis of ' + self.specs[param1][1] + ' vs. ' + self.specs[param2][1]
-        fig.canvas.set_window_title( fig_name )        
+        if self.reg_type == 'lin':
+            
+            y = self.theta[0] * x + self.theta[1]
+            
+        return y
         
-        if self.save:
-            file_name = self.output_path + fig_name.replace(" ", "_")
-            print(file_name)
-            fig.savefig( file_name + '.png' , format='png', bbox_inches='tight', pad_inches=0.05) 
-            fig.savefig( file_name + '.pdf' , format='pdf', bbox_inches='tight', pad_inches=0.05) 
-            print('Figure {' + fig_name + '} saved')
+    ############################
+    def motor_meet_criteria(self, motor , param1, param2):
+        """ check if motor meet analysis criteria """   
+        
+        motor_type_ok = False
+        
+        # Domain in terms of motor type
+        
+        if ( self.active_type == 'All' or self.active_type == motor.specs['typ'][0] ):
+            # Motor type is ok
+            motor_type_ok = True
+            
+            
+        # Domain in terms of param1 and param2 range
+        
+        motor_range_ok = True
+        
+        x =  motor.specs[param1][0]
+        y =  motor.specs[param2][0]
+        
+        if ( x < self.active_range[0][0] or x > self.active_range[0][1] ):
+            # Param 1 is out of range
+            motor_range_ok = False
+            
+        if ( y < self.active_range[1][0] or y > self.active_range[1][1] ):
+            # Param 2 is out of range
+            motor_range_ok = False
+        
+        
+        # Combination
+        
+        motor_meet_criteria = motor_type_ok and motor_range_ok
+        
+        return motor_meet_criteria
         
         
     ############################
