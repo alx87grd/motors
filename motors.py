@@ -332,7 +332,180 @@ class MotorAnalyzer:
 ################################################################################
 '''
 
+
+
+class DsdmSimpleAnalyzer:
+    
+    """ 
+    Class to compute dsdm specs
+    ----------------------------
+    Simplification:
+    -- electric motor with flat torque curve (vs. speed)
+    -- linear relationship of mass, price, kinetic energy vs. torque
+    -- same power for two operating points
+    """
+    
+    ############################
+    def __init__( self ):
+        """ """
         
+        self.hs_torque         = 50 #mNm
+        self.lam               = 10
+        self.motor_data_source = '../data/all_data_test.csv'
+        
+        # I/O Params
+        self.save          = True
+        self.output_path   = '../output/'
+        self.analysis_name = 'Simple dsdm vs. single motor analysis '
+        
+        self.compute_secondary_values()
+        self.compute_regressions()
+        
+        
+    ############################
+    def compute_secondary_values( self ):
+        """ """
+        
+        self.hf_torque = self.hs_torque * self.lam
+        
+    ############################
+    def compute_regressions( self ):
+        """ """
+        
+        self.A_tor       = MotorAnalyzer( self.motor_data_source )
+        self.A_pri       = MotorAnalyzer( self.motor_data_source )
+        self.A_kin       = MotorAnalyzer( self.motor_data_source )
+        
+        a1 = 'tor'
+        a2 = 'mas'
+        # a2 = 'pri'
+        # a2 = 'kin'
+        
+        self.A_tor.two_axis_regression( a1 , a2 )
+        
+        a1 = 'tor'
+#         a2 = 'mas'
+        a2 = 'pri'
+        # a2 = 'kin'
+        
+        self.A_pri.two_axis_regression( a1 , a2 )
+        
+        a1 = 'tor'
+#         a2 = 'mas'
+#         a2 = 'pri'
+        a2 = 'kin'
+        
+        self.A_kin.two_axis_regression( a1 , a2 )
+        
+    
+    ############################
+    def single_compute_specs( self ):
+        """ """
+        
+        mas = self.A_tor.reg_map( self.hf_torque )
+        pri = self.A_pri.reg_map( self.hf_torque )
+        kin = self.A_kin.reg_map( self.hf_torque )
+        
+        self.single_specs = [ mas , pri , kin ]
+    
+        
+    ############################
+    def dsdm_compute_specs( self ):
+        """ """
+        
+        mas = self.A_tor.reg_map( self.hs_torque ) * 2 # two identical motors
+        pri = self.A_pri.reg_map( self.hs_torque ) * 2 # two identical motors
+        kin = self.A_kin.reg_map( self.hs_torque )
+        
+        self.dsdm_specs = [ mas , pri , kin ]
+        
+        
+    ############################
+    def compare_lam( self , lam = 10 ):
+        """ """
+        
+        self.lam = lam
+        
+        self.compute_secondary_values()
+        self.single_compute_specs()
+        self.dsdm_compute_specs()
+        
+        res = [ self.single_specs , self.dsdm_specs ]
+        
+        return res
+        
+        
+    ############################
+    def plot_analysis( self , lam_max = 10 , ):
+        """ """
+        
+        n = 10
+        x = np.linspace( 1 , lam_max, num=n)
+        
+        mas_single = np.zeros(n)
+        pri_single = np.zeros(n)
+        kin_single = np.zeros(n)
+        mas_dsdm   = np.zeros(n)
+        pri_dsdm   = np.zeros(n)
+        kin_dsdm   = np.zeros(n)
+        
+        # For all lamba
+        for i in range(n):
+            
+            lam = x[i]
+            res = self.compare_lam(lam)
+            
+            mas_single[i] = res[0][0]
+            pri_single[i] = res[0][1]
+            kin_single[i] = res[0][2]
+            mas_dsdm[i]   = res[1][0]
+            pri_dsdm[i]   = res[1][1]
+            kin_dsdm[i]   = res[1][2]
+            
+        
+        fig , plots = plt.subplots(3, sharex=True,figsize=(4, 3),dpi=300, frameon=True)
+        self.fig  = fig
+        self.plots = plots
+        
+        
+        plots[0].plot( x, mas_single, linestyle = '-.', color = 'r' , label = 'dsdm')
+        plots[0].plot( x, mas_dsdm, linestyle = '--'  , color = 'b' , label = 'single')
+        plots[0].grid(True)
+        plots[0].legend()
+        plots[0].set_ylabel( self.A_tor.specs['mas'][1] + '\n' + self.A_tor.specs['mas'][2], fontsize=7 )
+        plots[0].tick_params(axis='both', which='major', labelsize=7)
+        plots[0].tick_params(axis='both', which='minor', labelsize=6)
+        
+        plots[1].plot( x, pri_single, linestyle = '-.', color = 'r' , label = 'dsdm')
+        plots[1].plot( x, pri_dsdm, linestyle = '--'  , color = 'b' , label = 'single')
+        plots[1].grid(True)
+        plots[1].set_ylabel( self.A_tor.specs['pri'][1] + '\n' + self.A_tor.specs['pri'][2], fontsize=7 )
+        plots[1].tick_params(axis='both', which='major', labelsize=7)
+        plots[1].tick_params(axis='both', which='minor', labelsize=6)
+        
+        plots[2].plot( x, kin_single, linestyle = '-.', color = 'r' , label = 'dsdm')
+        plots[2].plot( x, kin_dsdm, linestyle = '--'  , color = 'b' , label = 'single')
+        plots[2].grid(True)
+        plots[2].set_ylabel( self.A_tor.specs['kin'][1] + '\n' + self.A_tor.specs['kin'][2], fontsize=7 )
+        plots[2].tick_params(axis='both', which='major', labelsize=7)
+        plots[2].tick_params(axis='both', which='minor', labelsize=6)
+        
+        plots[2].set_xlabel( 'Operating speed ratio', fontsize=7 )
+        
+        plt.draw()
+        fig.tight_layout()
+        
+        fig_name = self.analysis_name
+        fig.canvas.set_window_title( fig_name )        
+        
+        if self.save:
+            file_name = self.output_path + fig_name.replace(" ", "_")
+            fig.savefig( file_name + '.png' , format='png', bbox_inches='tight', pad_inches=0.05) 
+            fig.savefig( file_name + '.pdf' , format='pdf', bbox_inches='tight', pad_inches=0.05) 
+            print('Figure {' + fig_name + '} saved')
+        
+        
+    
 
 '''
 #################################################################
@@ -344,44 +517,8 @@ class MotorAnalyzer:
 if __name__ == "__main__":     
     """ MAIN TEST """
     
+    a = DsdmSimpleAnalyzer()
     
-    A = MotorAnalyzer('../data/all_data_test.csv')
-    
-#     'typ':     'Type'      
-#     'dia':     'Diameter'             
-#     'pow':     'Power'                
-#     'sup':     'Supply tension'       
-#     'vel':     'No load velocity'      
-#     'tor':     'Max. continuous torque'
-#     'pri':     'Price'                
-#     'len':     'Length'               
-#     'ine':     'Rotor inertia'       
-#     'mas':     'Mass'                 
-#     'vol':     'Volume'         
-    
-    a1 = 'tor'
-    a2 = 'mas'
-    
-    A.two_axis_plot( a1 , a2 )
-    
-    a1 = 'tor'
-    a2 = 'pri'
-      
-    A.two_axis_plot( a1 , a2 )
-      
-    a1 = 'tor'
-    a2 = 'ine'
-      
-    A.two_axis_plot( a1 , a2 )
-     
-    a1 = 'tor'
-    a2 = 'vol'
-      
-    A.two_axis_plot( a1 , a2 )
-     
-    a1 = 'tor'
-    a2 = 'kin'
-      
-    A.two_axis_plot( a1 , a2 )
+    a.plot_analysis(10)
     
     plt.show()
