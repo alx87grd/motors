@@ -349,7 +349,9 @@ class DsdmSimpleAnalyzer:
     def __init__( self ):
         """ """
         
-        self.hs_torque         = 50 #mNm
+        self.hs_tor            = 50 #mNm
+        self.hs_vel            = 10000 #RPM
+        self.hs_pow            = self.hs_tor * self.hs_vel * 0.001 * np.pi * 2 /60 # watts
         self.lam               = 10
         self.motor_data_source = '../data/all_data_test.csv'
         
@@ -358,15 +360,17 @@ class DsdmSimpleAnalyzer:
         self.output_path   = '../output/'
         self.analysis_name = 'Simple dsdm vs. single motor analysis '
         
-        self.compute_secondary_values()
+        self.compute_hf_req() # based on lambda
         self.compute_regressions()
         
         
     ############################
-    def compute_secondary_values( self ):
-        """ """
+    def compute_hf_req( self ):
+        """ based on lambda """
         
-        self.hf_torque = self.hs_torque * self.lam
+        self.hf_tor = self.hs_tor * self.lam
+        self.hf_vel = self.hs_vel * 1.0 / self.lam
+        
         
     ############################
     def compute_regressions( self ):
@@ -402,9 +406,9 @@ class DsdmSimpleAnalyzer:
     def single_compute_specs( self ):
         """ """
         
-        mas = self.A_tor.reg_map( self.hf_torque )
-        pri = self.A_pri.reg_map( self.hf_torque )
-        kin = self.A_kin.reg_map( self.hf_torque )
+        mas = self.A_tor.reg_map( self.hf_tor )
+        pri = self.A_pri.reg_map( self.hf_tor )
+        kin = self.A_kin.reg_map( self.hf_tor )
         
         self.single_specs = [ mas , pri , kin ]
     
@@ -413,9 +417,9 @@ class DsdmSimpleAnalyzer:
     def dsdm_compute_specs( self ):
         """ """
         
-        mas = self.A_tor.reg_map( self.hs_torque ) * 2 # two identical motors
-        pri = self.A_pri.reg_map( self.hs_torque ) * 2 # two identical motors
-        kin = self.A_kin.reg_map( self.hs_torque )
+        mas = self.A_tor.reg_map( self.hs_tor ) * 2 # two identical motors
+        pri = self.A_pri.reg_map( self.hs_tor ) * 2 # two identical motors
+        kin = self.A_kin.reg_map( self.hs_tor )
         
         self.dsdm_specs = [ mas , pri , kin ]
         
@@ -426,7 +430,7 @@ class DsdmSimpleAnalyzer:
         
         self.lam = lam
         
-        self.compute_secondary_values()
+        self.compute_hf_req()
         self.single_compute_specs()
         self.dsdm_compute_specs()
         
@@ -468,23 +472,23 @@ class DsdmSimpleAnalyzer:
         self.plots = plots
         
         
-        plots[0].plot( x, mas_single, linestyle = '-.', color = 'r' , label = 'dsdm')
-        plots[0].plot( x, mas_dsdm, linestyle = '--'  , color = 'b' , label = 'single')
+        plots[0].plot( x, mas_single, linestyle = '-.', color = 'r' , label = 'single')
+        plots[0].plot( x, mas_dsdm, linestyle = '--'  , color = 'b' , label = 'dsdm')
         plots[0].grid(True)
         plots[0].legend()
         plots[0].set_ylabel( self.A_tor.specs['mas'][1] + '\n' + self.A_tor.specs['mas'][2], fontsize=7 )
         plots[0].tick_params(axis='both', which='major', labelsize=7)
         plots[0].tick_params(axis='both', which='minor', labelsize=6)
         
-        plots[1].plot( x, pri_single, linestyle = '-.', color = 'r' , label = 'dsdm')
-        plots[1].plot( x, pri_dsdm, linestyle = '--'  , color = 'b' , label = 'single')
+        plots[1].plot( x, pri_single, linestyle = '-.', color = 'r' , label = 'single')
+        plots[1].plot( x, pri_dsdm, linestyle = '--'  , color = 'b' , label = 'dsdm')
         plots[1].grid(True)
         plots[1].set_ylabel( self.A_tor.specs['pri'][1] + '\n' + self.A_tor.specs['pri'][2], fontsize=7 )
         plots[1].tick_params(axis='both', which='major', labelsize=7)
         plots[1].tick_params(axis='both', which='minor', labelsize=6)
         
-        plots[2].plot( x, kin_single, linestyle = '-.', color = 'r' , label = 'dsdm')
-        plots[2].plot( x, kin_dsdm, linestyle = '--'  , color = 'b' , label = 'single')
+        plots[2].plot( x, kin_single, linestyle = '-.', color = 'r' , label = 'single')
+        plots[2].plot( x, kin_dsdm, linestyle = '--'  , color = 'b' , label = 'dsdm')
         plots[2].grid(True)
         plots[2].set_ylabel( self.A_tor.specs['kin'][1] + '\n' + self.A_tor.specs['kin'][2], fontsize=7 )
         plots[2].tick_params(axis='both', which='major', labelsize=7)
@@ -503,8 +507,134 @@ class DsdmSimpleAnalyzer:
             fig.savefig( file_name + '.png' , format='png', bbox_inches='tight', pad_inches=0.05) 
             fig.savefig( file_name + '.pdf' , format='pdf', bbox_inches='tight', pad_inches=0.05) 
             print('Figure {' + fig_name + '} saved')
+            
+        
+    
+'''
+################################################################################
+'''
+            
+class DsdmImprovedAnalyzer( DsdmSimpleAnalyzer ):
+    
+    """ 
+    Class to compute dsdm specs
+    ----------------------------
+    Simplification:
+    -- electric motor with flat torque curve (vs. speed)
+    -- linear relationship of mass, price, kinetic energy vs. torque
+    """
+    
+    ############################
+    def __init__( self ):
+        """ """
+        
+        self.motor_data_source = '../data/all_data_test.csv'
+        
+        # I/O Params
+        self.save          = True
+        self.output_path   = '../output/'
+        self.analysis_name = 'Simple dsdm vs. single motor analysis '
+        
+        self.input_torque_speed_req()
+        self.compute_regressions()
         
         
+    ############################
+    def input_torque_speed_req( self, hs_tor = 50, hs_vel = 10000, hf_tor = 500 , hf_vel = 1000):
+        """ """
+        
+        self.lam = hs_vel / hf_vel
+        
+        self.hs_pow = hs_tor * hs_vel * 0.001 * np.pi * 2 /60 # watts
+        self.hf_pow = hf_tor * hf_vel * 0.001 * np.pi * 2 /60 # watts
+        
+        self.hs_tor = hs_tor
+        self.hs_vel = hs_vel
+        self.hf_tor = hf_tor
+        self.hf_vel = hf_vel
+        
+    
+    ############################
+    def gear_req2spec( self , tor, ratio):
+        """ """
+        
+        #TODO base on real data
+        
+        mas = 0.1 * tor
+        pri = self.A_pri.reg_map( tor ) * 0.20 # 20% of motor price
+        kin = 0 # neglect
+        
+        return mas, pri, kin
+    
+    
+    ############################
+    def brake_req2spec( self , tor):
+        """ """
+        
+        #TODO base on real data
+        
+        mas = 0.2 * tor
+        pri = self.A_pri.reg_map( tor ) * 0.20 # 20% of motor price
+        kin = 0 # neglect
+        
+        return mas, pri, kin
+    
+        
+    ############################
+    def single_compute_specs( self ):
+        """ """
+        # gearbox
+        ratio               = 10000.0 / self.hs_vel
+        g_mas, g_pri, g_kin = self.gear_req2spec( self.hf_tor , ratio )
+        
+        # motor
+        m_tor = self.hf_tor * 1.0 / ratio
+        m_mas = self.A_tor.reg_map( m_tor )
+        m_pri = self.A_pri.reg_map( m_tor )
+        m_kin = self.A_kin.reg_map( m_tor )
+        
+        # sum
+        mas = m_mas + g_mas
+        pri = m_pri + g_pri
+        kin = m_kin + g_kin
+        
+        self.single_specs = [ mas , pri , kin ]
+    
+        
+    ############################
+    def dsdm_compute_specs( self ):
+        """ """
+        # gearbox m1 
+        r1                     = 10000.0 / self.hs_vel
+        g1_mas, g1_pri, g1_kin = self.gear_req2spec( self.hf_tor , r1 ) # assume both need to sustain hf_tor
+        
+        # gearbox m2 
+        r2                     = 10000.0 / self.hf_vel
+        g2_mas, g2_pri, g2_kin = self.gear_req2spec( self.hf_tor , r2 ) # assume both need to sustain hf_tor
+        
+        # brake 
+        b_tor                  = self.hf_tor * 1.0 / r1
+        b_mas, b_pri, b_kin    = self.brake_req2spec( b_tor )
+        
+        
+        # motor 1
+        m1_tor = self.hs_tor * 1.0 / r1
+        m1_mas = self.A_tor.reg_map( m1_tor )
+        m1_pri = self.A_pri.reg_map( m1_tor )
+        m1_kin = self.A_kin.reg_map( m1_tor )
+        
+        # motor 1
+        m2_tor = self.hf_tor * 1.0 / r2
+        m2_mas = self.A_tor.reg_map( m2_tor )
+        m2_pri = self.A_pri.reg_map( m2_tor )
+        m2_kin = self.A_kin.reg_map( m2_tor )
+        
+        # sum
+        mas = m1_mas + g1_mas + m2_mas + g2_mas + b_mas
+        pri = m1_pri + g1_pri + m2_pri + g2_pri + b_pri
+        kin = m1_kin
+        
+        self.dsdm_specs = [ mas , pri , kin ]
     
 
 '''
@@ -520,5 +650,9 @@ if __name__ == "__main__":
     a = DsdmSimpleAnalyzer()
     
     a.plot_analysis(10)
+    
+    b = DsdmImprovedAnalyzer()
+    
+    b.plot_analysis(10)
     
     plt.show()
