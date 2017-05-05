@@ -533,7 +533,7 @@ class DsdmImprovedAnalyzer( DsdmSimpleAnalyzer ):
         # I/O Params
         self.save          = True
         self.output_path   = '../output/'
-        self.analysis_name = 'Simple dsdm vs. single motor analysis '
+        self.analysis_name = 'Improved dsdm vs. single motor analysis '
         
         self.input_torque_speed_req()
         self.compute_regressions()
